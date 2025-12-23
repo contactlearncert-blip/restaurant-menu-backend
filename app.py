@@ -61,9 +61,10 @@ def format_orders_for_staff(orders):
             name_display = item.dish.name
             if qty > 1:
                 name_display += f" (x{qty})"
+            # ✅ Envoie le prix comme nombre (le staff ajoutera 'MAD' si besoin)
             items.append({
                 "name": name_display,
-                "price": f"{price} MAD"
+                "price": price  # <- Nombre, pas une chaîne avec "MAD"
             })
         result.append({
             "id": order.id,
@@ -91,7 +92,7 @@ def register_restaurant():
     db.session.add(restaurant)
     db.session.commit()
 
-    # ✅ CORRIGÉ : pas d'espaces dans les URLs par défaut
+    # ✅ CORRIGÉ : suppression des espaces dans les valeurs par défaut
     client_url_base = os.getenv("CLIENT_URL", "https://client.example.com").rstrip('/')
     staff_url_base = os.getenv("STAFF_URL", "https://staff.example.com").rstrip('/')
 
@@ -115,7 +116,7 @@ def get_menu_flat(public_id):
         "id": dish.id,
         "name": dish.name,
         "description": dish.description or "Délicieux plat de notre maison.",
-        "price": f"{dish.price} MAD",
+        "price": dish.price,  # <- Nombre, pas "X MAD"
         "category": category_name,
         "image_data": dish.image_base64 or ""
     } for dish, category_name in dishes])
