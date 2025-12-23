@@ -9,22 +9,21 @@ from datetime import datetime, date
 app = Flask(__name__)
 CORS(app)
 
-# === Configuration ===
-# ⚠️ En production sur Railway, DATABASE_URL est fourni automatiquement
-database_url = os.environ.get('DATABASE_URL')
-if database_url:
-    # Railway fournit une URL postgres:// → SQLAlchemy 1.4+ requiert postgresql://
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url.replace("postgres://", "postgresql://", 1)
-else:
-    # Mode local uniquement (développement)
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///instance/database.db'
-
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    'DATABASE_URL',
+    'sqlite:///instance/database.db'
+).replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
+# Initialisation unique
 db.init_app(app)
 
-# === Utilitaires ===
+# Création des tables au démarrage
+with app.app_context():
+    db.create_all()
+
+# UTILITAIRES
 def generate_public_id():
     return "rest_" + secrets.token_urlsafe(8).replace("_", "").replace("-", "")[:8]
 
@@ -36,10 +35,7 @@ def extract_price_from_string(price_str):
     return float(match.group()) if match else 0.0
 
 def get_or_create_category(restaurant_id, category_name):
-    category = Category.query.filter_by(
-        restaurant_id=restaurant_id,
-        name=category_name
-    ).first()
+    category = Category.query.filter_by(restaurant_id=restaurant_id, name=category_name).first()
     if not category:
         category = Category(name=category_name, restaurant_id=restaurant_id)
         db.session.add(category)
@@ -60,13 +56,7 @@ def format_orders_for_staff(orders):
         })
     return result
 
-# === Routes ===
-db.init_app(app)
-
-# Crée les tables au démarrage
-with app.app_context():
-    db.create_all()
-
+# ROUTES
 @app.route('/api/register', methods=['POST'])
 def register_restaurant():
     data = request.get_json()
@@ -82,7 +72,6 @@ def register_restaurant():
     db.session.add(restaurant)
     db.session.commit()
 
-    # ✅ Correction : suppression des espaces dans les URLs par défaut
     client_url = f"{os.environ.get('CLIENT_URL', 'https://client.example.com').rstrip('/')}/client/{public_id}"
     staff_url = f"{os.environ.get('STAFF_URL', 'https://staff.example.com').rstrip('/')}/staff/{public_id}"
 
@@ -215,7 +204,6 @@ def get_order_status_client(order_id):
 def health():
     return {'status': 'ok'}
 
-# === Lancement ===
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
