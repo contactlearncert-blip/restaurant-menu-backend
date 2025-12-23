@@ -61,8 +61,10 @@ def format_orders_for_staff(orders):
     return result
 
 # === Routes ===
-@app.before_first_request
-def create_tables():
+db.init_app(app)
+
+# Crée les tables au démarrage
+with app.app_context():
     db.create_all()
 
 @app.route('/api/register', methods=['POST'])
@@ -215,7 +217,5 @@ def health():
 
 # === Lancement ===
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
