@@ -9,17 +9,22 @@ from datetime import datetime, date
 app = Flask(__name__)
 CORS(app)
 
-# Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-    'DATABASE_URL',
-    'sqlite:///instance/database.db'
-).replace("postgres://", "postgresql://", 1)
+# === Configuration ===
+# ⚠️ En production sur Railway, DATABASE_URL est fourni automatiquement
+database_url = os.environ.get('DATABASE_URL')
+if database_url:
+    # Railway fournit une URL postgres:// → SQLAlchemy 1.4+ requiert postgresql://
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url.replace("postgres://", "postgresql://", 1)
+else:
+    # Mode local uniquement (développement)
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///instance/database.db'
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
 db.init_app(app)
 
-# Utilities
+# === Utilitaires ===
 def generate_public_id():
     return "rest_" + secrets.token_urlsafe(8).replace("_", "").replace("-", "")[:8]
 
@@ -55,7 +60,11 @@ def format_orders_for_staff(orders):
         })
     return result
 
-# Routes
+# === Routes ===
+@app.before_first_request
+def create_tables():
+    db.create_all()
+
 @app.route('/api/register', methods=['POST'])
 def register_restaurant():
     data = request.get_json()
@@ -71,6 +80,7 @@ def register_restaurant():
     db.session.add(restaurant)
     db.session.commit()
 
+    # ✅ Correction : suppression des espaces dans les URLs par défaut
     client_url = f"{os.environ.get('CLIENT_URL', 'https://client.example.com').rstrip('/')}/client/{public_id}"
     staff_url = f"{os.environ.get('STAFF_URL', 'https://staff.example.com').rstrip('/')}/staff/{public_id}"
 
