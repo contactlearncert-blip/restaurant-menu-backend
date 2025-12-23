@@ -56,10 +56,6 @@ def format_orders_for_staff(orders):
     return result
 
 # Routes
-@app.before_first_request
-def create_tables():
-    db.create_all()
-
 @app.route('/api/register', methods=['POST'])
 def register_restaurant():
     data = request.get_json()
@@ -207,6 +203,7 @@ def get_order_status_client(order_id):
 def health():
     return {'status': 'ok'}
 
+# === Lancement ===
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
