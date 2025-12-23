@@ -49,15 +49,27 @@ def get_or_create_category(restaurant_id, category_name):
 
 
 def format_orders_for_staff(orders):
+    """Formatte les commandes pour l'affichage côté staff, avec gestion des quantités."""
     result = []
     for order in orders:
-        items = [{"name": item.dish.name, "price": f"{item.dish.price} MAD"} for item in order.items]
-        total = sum(item.dish.price * item.quantity for item in order.items)
+        items = []
+        total = 0
+        for item in order.items:
+            price = item.dish.price
+            qty = item.quantity
+            total += price * qty
+            name_display = item.dish.name
+            if qty > 1:
+                name_display += f" (x{qty})"
+            items.append({
+                "name": name_display,
+                "price": f"{price} MAD"
+            })
         result.append({
             "id": order.id,
             "table_number": order.table_number or "—",
             "items": items,
-            "total_price": total,
+            "total_price": round(total, 2),
             "timestamp": order.created_at.isoformat()
         })
     return result
@@ -79,7 +91,7 @@ def register_restaurant():
     db.session.add(restaurant)
     db.session.commit()
 
-    # ✅ CORRECTION : Utiliser ?token=... au lieu de chemins dynamiques
+    # ✅ CORRIGÉ : pas d'espaces dans les URLs par défaut
     client_url_base = os.getenv("CLIENT_URL", "https://client.example.com").rstrip('/')
     staff_url_base = os.getenv("STAFF_URL", "https://staff.example.com").rstrip('/')
 
@@ -228,7 +240,7 @@ def health():
     return {'status': 'ok'}
 
 
-@app.route('/debug-env')  # 🔍 Pour déboguer les variables d'environnement en production
+@app.route('/debug-env')
 def debug_env():
     return jsonify({
         "CLIENT_URL": os.getenv("CLIENT_URL"),
