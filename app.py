@@ -9,6 +9,7 @@ from datetime import datetime, date
 app = Flask(__name__)
 CORS(app)
 
+# Configuration de la base de données
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
     'DATABASE_URL',
     'sqlite:///instance/database.db'
@@ -16,23 +17,27 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
-# Initialisation unique
+# Initialisation de la base de données
 db.init_app(app)
 
 # Création des tables au démarrage
 with app.app_context():
     db.create_all()
 
-# UTILITAIRES
+
+# === UTILITAIRES ===
 def generate_public_id():
     return "rest_" + secrets.token_urlsafe(8).replace("_", "").replace("-", "")[:8]
+
 
 def get_restaurant_by_public_id(public_id):
     return Restaurant.query.filter_by(public_id=public_id).first_or_404()
 
+
 def extract_price_from_string(price_str):
     match = re.search(r'[\d.]+', price_str)
     return float(match.group()) if match else 0.0
+
 
 def get_or_create_category(restaurant_id, category_name):
     category = Category.query.filter_by(restaurant_id=restaurant_id, name=category_name).first()
@@ -41,6 +46,7 @@ def get_or_create_category(restaurant_id, category_name):
         db.session.add(category)
         db.session.flush()
     return category
+
 
 def format_orders_for_staff(orders):
     result = []
@@ -56,7 +62,8 @@ def format_orders_for_staff(orders):
         })
     return result
 
-# ROUTES
+
+# === ROUTES ===
 @app.route('/api/register', methods=['POST'])
 def register_restaurant():
     data = request.get_json()
@@ -72,14 +79,19 @@ def register_restaurant():
     db.session.add(restaurant)
     db.session.commit()
 
-    client_url = f"{os.environ.get('CLIENT_URL', 'https://client.example.com').rstrip('/')}/client/{public_id}"
-    staff_url = f"{os.environ.get('STAFF_URL', 'https://staff.example.com').rstrip('/')}/staff/{public_id}"
+    # ✅ CORRECTION : Utiliser ?token=... au lieu de chemins dynamiques
+    client_url_base = os.getenv("CLIENT_URL", "https://client.example.com").rstrip('/')
+    staff_url_base = os.getenv("STAFF_URL", "https://staff.example.com").rstrip('/')
+
+    client_url = f"{client_url_base}/?token={public_id}"
+    staff_url = f"{staff_url_base}/dashboard.html?token={public_id}"
 
     return jsonify({
         'restaurant_id': public_id,
         'client_url': client_url,
         'staff_url': staff_url
     }), 201
+
 
 @app.route('/api/menu/<public_id>', methods=['GET'])
 def get_menu_flat(public_id):
@@ -96,6 +108,7 @@ def get_menu_flat(public_id):
         "image_data": dish.image_base64 or ""
     } for dish, category_name in dishes])
 
+
 @app.route('/api/menu/add/<public_id>', methods=['POST'])
 def add_dish(public_id):
     restaurant = get_restaurant_by_public_id(public_id)
@@ -111,7 +124,7 @@ def add_dish(public_id):
 
     try:
         price = extract_price_from_string(price_str)
-    except:
+    except Exception:
         return jsonify({'error': 'Prix invalide'}), 400
 
     category = get_or_create_category(restaurant.id, category_name)
@@ -121,6 +134,7 @@ def add_dish(public_id):
     db.session.commit()
     return jsonify({'id': dish.id}), 201
 
+
 @app.route('/api/menu/<int:dish_id>', methods=['DELETE'])
 def delete_dish(dish_id):
     dish = Dish.query.get_or_404(dish_id)
@@ -128,12 +142,14 @@ def delete_dish(dish_id):
     db.session.commit()
     return jsonify({'success': True}), 200
 
+
 @app.route('/api/orders/pending/<public_id>', methods=['GET'])
 def get_pending_orders(public_id):
     restaurant = get_restaurant_by_public_id(public_id)
     orders = Order.query.filter_by(restaurant_id=restaurant.id, status='pending') \
         .order_by(Order.created_at.desc()).all()
     return jsonify(format_orders_for_staff(orders))
+
 
 @app.route('/api/orders/confirmed/<public_id>', methods=['GET'])
 def get_confirmed_orders(public_id):
@@ -144,6 +160,7 @@ def get_confirmed_orders(public_id):
     ).order_by(Order.created_at.desc()).all()
     return jsonify(format_orders_for_staff(orders))
 
+
 @app.route('/api/order/<int:order_id>/confirm', methods=['POST'])
 def confirm_order(order_id):
     order = Order.query.get_or_404(order_id)
@@ -151,12 +168,14 @@ def confirm_order(order_id):
     db.session.commit()
     return jsonify({'success': True}), 200
 
+
 @app.route('/api/order/<int:order_id>', methods=['DELETE'])
 def delete_order(order_id):
     order = Order.query.get_or_404(order_id)
     db.session.delete(order)
     db.session.commit()
     return jsonify({'success': True}), 200
+
 
 @app.route('/api/stats/today/<public_id>', methods=['GET'])
 def get_stats_today(public_id):
@@ -169,6 +188,7 @@ def get_stats_today(public_id):
     ).all()
     total_sales = sum(sum(item.dish.price * item.quantity for item in order.items) for order in orders)
     return jsonify({'total_sales': round(total_sales, 2), 'orders_count': len(orders)})
+
 
 @app.route('/api/order/<public_id>', methods=['POST'])
 def create_order_client(public_id):
@@ -194,21 +214,35 @@ def create_order_client(public_id):
     db.session.commit()
     return jsonify({'order_id': order.id}), 201
 
+
 @app.route('/api/order/<int:order_id>/status', methods=['GET'])
 def get_order_status_client(order_id):
     order = Order.query.get_or_404(order_id)
     status = 'confirmed' if order.status in ['validated', 'completed'] else 'pending'
     return jsonify({'status': status})
 
+
+# === Routes utilitaires ===
 @app.route('/health')
 def health():
     return {'status': 'ok'}
+
+
+@app.route('/debug-env')  # 🔍 Pour déboguer les variables d'environnement en production
+def debug_env():
+    return jsonify({
+        "CLIENT_URL": os.getenv("CLIENT_URL"),
+        "STAFF_URL": os.getenv("STAFF_URL"),
+        "DATABASE_URL": (os.getenv("DATABASE_URL") or "")[:60] + ("..." if os.getenv("DATABASE_URL") and len(os.getenv("DATABASE_URL")) > 60 else ""),
+    })
+
 
 @app.route('/')
 def index():
     return "✅ Backend fonctionnel ! Accédez aux endpoints via /api/..."
 
+
+# === Démarrage ===
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-

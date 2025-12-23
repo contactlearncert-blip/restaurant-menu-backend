@@ -1,0 +1,25 @@
+cat > .gitignore <<EOF
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+.env
+.env.local
+venv/
+.envrc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Instances locales
+instance/
+EOF
