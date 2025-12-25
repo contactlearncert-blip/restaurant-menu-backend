@@ -81,11 +81,11 @@ def upload_image_to_supabase(image_b64, public_id, dish_id):
         return None
 
     try:
-        # Gérer le format data:image/... ou pur Base64
+        # Gérer le format image/... ou pur Base64
         if image_b64.startswith('data:image/'):
             header, encoded = image_b64.split(",", 1)
             content_type = header.split(";")[0].split(":")[1]
-            file_ext = content_type.split("/")[1].split(';')[0]
+            file_ext = content_type.split("/")[1]
         else:
             encoded = image_b64
             content_type = "image/jpeg"
@@ -166,12 +166,11 @@ def get_menu_flat(public_id):
 @app.route('/api/menu/add/<public_id>', methods=['POST'])
 def add_dish(public_id):
     restaurant = get_restaurant_by_public_id(public_id)
-    data = request.get_json()
-    name = data.get('name')
-    desc = data.get('description')
-    category_name = data.get('category')
-    price_str = data.get('price')
-    image_b64 = data.get('image_data')
+    name = request.form.get('name')
+    desc = request.form.get('description')
+    category_name = request.form.get('category')
+    price_str = request.form.get('price')
+    image_file = request.files.get('image_data')
 
     if not all([name, desc, category_name, price_str]):
         return jsonify({'error': 'Champs manquants'}), 400
@@ -191,7 +190,9 @@ def add_dish(public_id):
 
     # Upload l'image si présente
     image_path = None
-    if image_b64:
+    if image_file:
+        # Convertir le fichier en Base64
+        image_b64 = f"data:image/{image_file.content_type.split('/')[1]};base64,{base64.b64encode(image_file.read()).decode('utf-8')}"
         image_path = upload_image_to_supabase(image_b64, public_id, dish.id)
     
     dish.image_path = image_path
@@ -305,17 +306,6 @@ def debug_env():
 def index():
     return "✅ Backend fonctionnel ! Accédez aux endpoints via /api/..."
 
-@app.route('/api/migrate-images', methods=['POST'])
-def migrate_images():
-    dishes = Dish.query.filter(Dish.image_base64.isnot(None)).all()
-    for dish in dishes:
-        if dish.image_base64 and not dish.image_path:
-            image_path = upload_image_to_supabase(dish.image_base64, dish.restaurant.public_id, dish.id)
-            if image_path:
-                dish.image_path = image_path
-                dish.image_base64 = None  # Optionnel
-    db.session.commit()
-    return jsonify({"message": f"{len(dishes)} plats migrés"})
 
 # === Démarrage ===
 if __name__ == '__main__':
