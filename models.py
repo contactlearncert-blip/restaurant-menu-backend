@@ -24,7 +24,7 @@ class Dish(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     price = db.Column(db.Float, nullable=False)
-    image_path = db.Column(db.String(500), nullable=True)  # ← Chemin vers l'image dans Supabase Storage
+    image_base64 = db.Column(db.Text, nullable=True)
     category_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=False)
     restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
     category = db.relationship('Category', backref=db.backref('dishes', lazy=True, cascade='all, delete-orphan'))

@@ -1,8 +1,6 @@
 import os
 import secrets
 import re
-import requests
-import base64
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from models import db, Restaurant, Category, Dish, Order, OrderItem
@@ -31,12 +29,15 @@ with app.app_context():
 def generate_public_id():
     return "rest_" + secrets.token_urlsafe(8).replace("_", "").replace("-", "")[:8]
 
+
 def get_restaurant_by_public_id(public_id):
     return Restaurant.query.filter_by(public_id=public_id).first_or_404()
+
 
 def extract_price_from_string(price_str):
     match = re.search(r'[\d.]+', price_str)
     return float(match.group()) if match else 0.0
+
 
 def get_or_create_category(restaurant_id, category_name):
     category = Category.query.filter_by(restaurant_id=restaurant_id, name=category_name).first()
@@ -45,6 +46,7 @@ def get_or_create_category(restaurant_id, category_name):
         db.session.add(category)
         db.session.flush()
     return category
+
 
 def format_orders_for_staff(orders):
     """Formatte les commandes pour l'affichage côté staff, avec gestion des quantités."""
@@ -71,50 +73,6 @@ def format_orders_for_staff(orders):
             "timestamp": order.created_at.isoformat()
         })
     return result
-
-def upload_image_to_supabase(image_b64, public_id, dish_id):
-    """Upload une image à Supabase Storage"""
-    supabase_url = os.environ.get("SUPABASE_URL")
-    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    
-    if not image_b64 or not supabase_url or not service_role_key:
-        return None
-
-    try:
-        # Gérer le format image/... ou pur Base64
-        if image_b64.startswith('data:image/'):
-            header, encoded = image_b64.split(",", 1)
-            content_type = header.split(";")[0].split(":")[1]
-            file_ext = content_type.split("/")[1]
-        else:
-            encoded = image_b64
-            content_type = "image/jpeg"
-            file_ext = "jpg"
-
-        # Décoder le Base64
-        file_data = base64.b64decode(encoded)
-
-        # Nom unique
-        file_name = f"dish_{dish_id}.{file_ext}"
-
-        # URL Supabase
-        url = f"{supabase_url}/storage/v1/object/menu-images/{public_id}/{file_name}"
-        headers = {
-            "Authorization": f"Bearer {service_role_key}",
-            "Content-Type": content_type
-        }
-
-        response = requests.post(url, headers=headers, data=file_data)
-        
-        if response.status_code == 200:
-            return f"menu-images/{public_id}/{file_name}"
-        else:
-            print(f"Erreur Supabase upload: {response.status_code} - {response.text}")
-            return None
-            
-    except Exception as e:
-        print(f"Exception upload: {str(e)}")
-        return None
 
 
 # === ROUTES ===
@@ -159,18 +117,19 @@ def get_menu_flat(public_id):
         "description": dish.description or "Délicieux plat de notre maison.",
         "price": f"{dish.price} MAD",
         "category": category_name,
-        "image_path": dish.image_path or ""  # ✅ Retourne le chemin, pas le Base64
+        "image_data": dish.image_base64 or ""
     } for dish, category_name in dishes])
 
 
 @app.route('/api/menu/add/<public_id>', methods=['POST'])
 def add_dish(public_id):
     restaurant = get_restaurant_by_public_id(public_id)
-    name = request.form.get('name')
-    desc = request.form.get('description')
-    category_name = request.form.get('category')
-    price_str = request.form.get('price')
-    image_file = request.files.get('image_data')
+    data = request.get_json()
+    name = data.get('name')
+    desc = data.get('description')
+    category_name = data.get('category')
+    price_str = data.get('price')
+    image_b64 = data.get('image_data')
 
     if not all([name, desc, category_name, price_str]):
         return jsonify({'error': 'Champs manquants'}), 400
@@ -181,23 +140,10 @@ def add_dish(public_id):
         return jsonify({'error': 'Prix invalide'}), 400
 
     category = get_or_create_category(restaurant.id, category_name)
-    
-    # Créer le plat (sans image pour avoir un ID)
-    dish = Dish(name=name, description=desc, price=price,
+    dish = Dish(name=name, description=desc, price=price, image_base64=image_b64,
                 category_id=category.id, restaurant_id=restaurant.id)
     db.session.add(dish)
-    db.session.flush()  # Pour obtenir l'ID
-
-    # Upload l'image si présente
-    image_path = None
-    if image_file:
-        # Convertir le fichier en Base64
-        image_b64 = f"data:image/{image_file.content_type.split('/')[1]};base64,{base64.b64encode(image_file.read()).decode('utf-8')}"
-        image_path = upload_image_to_supabase(image_b64, public_id, dish.id)
-    
-    dish.image_path = image_path
     db.session.commit()
-    
     return jsonify({'id': dish.id}), 201
 
 
@@ -293,14 +239,15 @@ def get_order_status_client(order_id):
 def health():
     return {'status': 'ok'}
 
+
 @app.route('/debug-env')
 def debug_env():
     return jsonify({
         "CLIENT_URL": os.getenv("CLIENT_URL"),
         "STAFF_URL": os.getenv("STAFF_URL"),
-        "SUPABASE_URL": os.getenv("SUPABASE_URL", "")[:60] + "...",
         "DATABASE_URL": (os.getenv("DATABASE_URL") or "")[:60] + ("..." if os.getenv("DATABASE_URL") and len(os.getenv("DATABASE_URL")) > 60 else ""),
     })
+
 
 @app.route('/')
 def index():
