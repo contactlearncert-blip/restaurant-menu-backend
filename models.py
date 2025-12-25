@@ -24,7 +24,6 @@ class Dish(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     price = db.Column(db.Float, nullable=False)
-    # ✅ Remplace image_base64 par image_path
     image_path = db.Column(db.String(500), nullable=True)  # ← Chemin vers l'image dans Supabase Storage
     category_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=False)
     restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
